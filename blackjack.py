@@ -128,16 +128,17 @@ class Cards():
                     'diamondsK': False,
                     'diamondsA': False
                     }
-
+        self.dealerCards = []
     def total(self):
         '''returns total value of the cards held my player'''
         val = 0
         for card in self.cardState:
             if self.cardState[card] == True:
-                val += Cards.cardValue[card]
+                if card not in self.dealerCards:       #count all except dealer cards         
+                    val += Cards.cardValue[card]
         return val
 
-    def remember(self, card):
+    def remember(self, card, isDealerCard=False):
         '''Remembers posession of the given card.
         Returns -1 if card has already been seen.
         Returns 0 if card successfully remembered.
@@ -146,6 +147,8 @@ class Cards():
             if self.cardState[card] == True:
                 return -1   #sends a warning that card has already been seen
             self.cardState[card] = True
+            if isDealerCard:
+                self.dealerCards.append(card)
         except KeyError:
             raise ValueError("invalid card")
         return 0
@@ -171,22 +174,48 @@ tts = ALProxy("ALTextToSpeech", ROBOT_IP, 9559)
 barcode.subscribe("test_barcode")
 memory=ALProxy("ALMemory", ROBOT_IP, 9559)
 
-cardPrompts=["show me your first card", "show me your other card", "show me the dealer's card"]
 
 def listen(command):
     return None
 
-def seeCard(cards, prompt):
+def seeCard(cards, prompt, isDealerCard=False):
     tts.say(prompt)
-    reco_card = None
+    reco_card = ""
     while reco_card not in Cards.cardValue:
         data = memory.getData("BarcodeReader/BarcodeDetected")
-        if len(data) > 0:
+        if data is not None and len(data) > 0:
             reco_card = data[0][0]
         else:
             reco_card = None
-    cards.remember(reco_card)
+    cards.remember(reco_card, isDealerCard)
+    return reco_card
 
+def cardDesc(card):
+    fullName = {'J':'Jack','Q':'Queen','K':'King','A':'Ace'}
+
+    if card[-1] in ['J','Q','K','A']:
+        return fullName[card[-1]] + " of " + card[:-1]
+
+    if card[-1] == '0':
+        return "10 of " + card[:-2]
+        
+    elif card[-1] in ['2','3','4','5','6','7','8','9']:
+        return card[-1] + " of " + card[:-1]
+
+def decision(cards):
+    total = cards.total()
+    hitFavorable = cards.hitFavorable()
+    outputStr = "Your total is, " + str(total) + ". "
+    if cards.total() < 17:
+        outputStr += "You have no choice, you have to hit."
+    elif hitFavorable > 0.3775:
+        outputStr += "I feel, you should hit"
+    else:
+        outputStr += "I feel, you should stay"
+
+    return outputStr        
+
+cardPrompts=["show me your first card", "show me your other card", "show me the dealer's card"]
 
 while(1):
     # Wait for "new game command"
@@ -197,11 +226,17 @@ while(1):
     cards = Cards()
     time.sleep(1)
     
-    for prompt in cardPrompts:
-        seeCard(cards, prompt)
+    reco_card = seeCard(cards, "show me your first card")
+    if reco_card in Cards.cardValue:
+        tts.say("I see, a " + cardDesc(reco_card) + ";")
 
-    print cards.hitFavorable()
+    reco_card = seeCard(cards, "show me your second card")
+    if reco_card in Cards.cardValue:
+        tts.say("I see, a " + cardDesc(reco_card) + ";")
+
+    reco_card = seeCard(cards, "show me the dealer's card",isDealerCard=True)
+    if reco_card in Cards.cardValue:
+        tts.say("I see, a " + cardDesc(reco_card) + ";")
+
+    tts.say(decision(cards))
     break
-
-
-
